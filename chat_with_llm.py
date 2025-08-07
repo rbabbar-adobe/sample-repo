@@ -3,7 +3,7 @@ from langchain_openai import ChatOpenAI, AzureChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_models import ChatOllama
 
-# install langchain_community, langchain_google_genai, langchain_ollama, langchain_openai
+# Python libraries to be installed: langchain, langchain-openai, langchain-google-genai, langchain-community
 
 """
 LLM Chat Interface with Multi-Provider Support
