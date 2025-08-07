@@ -28,6 +28,7 @@ For Azure TTS:
     AZURE_TTS_ENDPOINT: Azure OpenAI endpoint URL
     AZURE_TTS_VOICE (default: "alloy"): Voice to use (alloy, echo, fable, onyx, nova, shimmer)
     AZURE_TTS_DEPLOYMENT (default: "tts"): Deployment name
+    AZURE_TTS_API_VERSION (default: "2025-03-01-preview"): API version
 
 For Google Cloud TTS:
     GOOGLE_API_KEY: Your Google API key (recommended)
@@ -106,11 +107,10 @@ def _generate_azure_tts(text, output_file, voice=None):
     endpoint = os.getenv("AZURE_TTS_ENDPOINT")
     deployment = os.getenv("AZURE_TTS_DEPLOYMENT", "tts")
     voice = voice or os.getenv("AZURE_TTS_VOICE", "alloy")
+    api_version = os.getenv("AZURE_TTS_API_VERSION", "2025-03-01-preview")
     
     if not api_key or not endpoint:
         raise ValueError("AZURE_TTS_KEY and AZURE_TTS_ENDPOINT must be set for Azure OpenAI TTS")
-    
-    api_version = "2025-03-01-preview"
     
     headers = {
         "api-key": api_key,
