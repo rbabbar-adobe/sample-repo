@@ -5,6 +5,53 @@ from langchain_community.chat_models import ChatOllama
 
 # install langchain_community, langchain_google_genai, langchain_ollama, langchain_openai
 
+"""
+LLM Chat Interface with Multi-Provider Support
+
+This module provides a unified interface for chatting with various LLM providers
+including Google Gemini, Azure OpenAI, OpenAI, and Ollama.
+
+SETUP:
+Users are expected to set appropriate environment variables for their chosen LLM provider
+before calling the get_llm_response function.
+
+Environment Variables:
+
+LLM_PROVIDER (default: "gemini")
+    - "gemini": Google Gemini (default)
+    - "azure": Azure OpenAI
+    - "openai": OpenAI API
+    - "ollama": Local Ollama models
+
+For Gemini (Google Generative AI):
+    GOOGLE_API_KEY: Your Google API key (recommended)
+    GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON file (alternative)
+    GEMINI_MODEL (default: "gemini-2.0-flash-exp"): Model name to use
+
+For Azure OpenAI:
+    AZURE_OPENAI_KEY: Your Azure OpenAI API key
+    AZURE_OPENAI_BASE: Azure OpenAI endpoint URL
+    AZURE_API_VERSION: API version (e.g., "2024-02-15-preview")
+    AZURE_DEPLOYMENT_NAME (default: "gpt-4o"): Deployment name
+
+For OpenAI:
+    OPENAI_API_KEY: Your OpenAI API key
+    OPENAI_API_BASE (default: "https://api.openai.com/v1"): API base URL
+    OPENAI_MODEL (default: "gpt-4o"): Model name
+
+For Ollama:
+    OLLAMA_BASE_URL (default: "http://localhost:11434"): Ollama server URL
+    OLLAMA_MODEL (default: "llama3"): Model name
+
+Usage:
+    # Set your environment variables first, then use the function
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the capital of France?"}
+    ]
+    response = get_llm_response(messages)
+"""
+
 def get_llm_response(messages):
     provider = os.getenv("LLM_PROVIDER", "gemini").lower()
 
