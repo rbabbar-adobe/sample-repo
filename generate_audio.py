@@ -5,6 +5,7 @@ from pathlib import Path
 from google.cloud import texttospeech
 
 # Python libraries to be installed: requests, google-cloud-texttospeech, pydub(optional)
+# Also install ffmpeg for pydub. This is required for smaller audio files to be merged.
 
 """
 Unified Text-to-Speech Interface with Multi-Provider Support
@@ -22,6 +23,14 @@ TTS_PROVIDER (default: "local")
     - "azure": Azure OpenAI TTS
     - "gcp": Google Cloud Text-to-Speech
     - "local": Local TTS implementation (default, uses espeak-ng)
+
+TTS_CLOUD_MAX_CHARS (default: 3000)
+    - Applies only to cloud providers: "azure" and "gcp"
+    - Maximum number of characters per TTS API call
+    - If the input text exceeds this limit, it will be split into chunks and synthesized sequentially,
+      then concatenated into the final audio file
+    - Set to a non-positive value to disable chunking
+    - Requires `pydub` (and ffmpeg installed on the system) to merge chunked audio outputs
 
 For Azure TTS:
     AZURE_TTS_KEY: Your Azure OpenAI API key
@@ -92,6 +101,21 @@ def generate_audio(text, output_file, provider=None, voice=None):
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
+    # Cloud input size limit handling via environment variable
+    # TTS_CLOUD_MAX_CHARS: Maximum characters per request for cloud providers (azure/gcp)
+    # Defaults to 3000 if not set. Local provider is never chunked.
+    max_chars_env = os.getenv("TTS_CLOUD_MAX_CHARS", "3000")
+    max_chars = None
+    try:
+        max_chars = int(max_chars_env)
+        if max_chars <= 0:
+            max_chars = None
+    except (TypeError, ValueError):
+        max_chars = 3000
+
+    if provider in ("azure", "gcp") and max_chars and len(text) > max_chars:
+        return _generate_cloud_tts_chunked(text, output_file, provider, voice, max_chars)
+
     if provider == "azure":
         return _generate_azure_tts(text, output_file, voice)
     elif provider == "gcp":
@@ -100,6 +124,92 @@ def generate_audio(text, output_file, provider=None, voice=None):
         return _generate_local_tts(text, output_file, voice)
     else:
         raise ValueError(f"Unsupported TTS_PROVIDER: {provider}")
+
+def _chunk_text_by_chars(text, max_chars):
+    """Split text into chunks not exceeding max_chars, preferring whitespace boundaries.
+
+    If a single token exceeds max_chars, it will be split hard.
+    """
+    import re
+
+    if len(text) <= max_chars:
+        return [text]
+
+    tokens = re.findall(r"\S+\s*", text)
+    chunks = []
+    current = ""
+
+    for token in tokens:
+        if len(current) + len(token) <= max_chars:
+            current += token
+        else:
+            if current:
+                chunks.append(current.strip())
+                current = ""
+            # If token itself is longer than max_chars, split it
+            if len(token) > max_chars:
+                start = 0
+                while start < len(token):
+                    part = token[start:start + max_chars]
+                    part = part.strip()
+                    if part:
+                        chunks.append(part)
+                    start += max_chars
+            else:
+                current = token
+
+    if current.strip():
+        chunks.append(current.strip())
+
+    # Final safety: ensure no empty strings
+    return [c for c in chunks if c]
+
+def _generate_cloud_tts_chunked(text, output_file, provider, voice, max_chars):
+    """Chunk long text for cloud providers and concatenate resulting audio files.
+
+    This function only applies to cloud providers (azure, gcp). Local provider is excluded.
+    """
+    from pathlib import Path
+    from pydub import AudioSegment
+
+    chunks = _chunk_text_by_chars(text, max_chars)
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_files = []
+    try:
+        for index, chunk in enumerate(chunks):
+            temp_file = str(output_path.parent / f".tts_chunk_{index}.mp3")
+            if provider == "azure":
+                _generate_azure_tts(chunk, temp_file, voice)
+            elif provider == "gcp":
+                _generate_gcp_tts(chunk, temp_file, voice)
+            else:
+                raise ValueError("Chunked synthesis is only supported for cloud providers 'azure' and 'gcp'.")
+            temp_files.append(temp_file)
+
+        # Concatenate audio segments
+        combined_audio = None
+        for temp_file in temp_files:
+            segment = AudioSegment.from_file(temp_file, format="mp3")
+            if combined_audio is None:
+                combined_audio = segment
+            else:
+                combined_audio += segment
+
+        # Determine export format from output extension; default to mp3
+        suffix = output_path.suffix.lower().lstrip(".") or "mp3"
+        combined_audio.export(str(output_path), format=suffix)
+
+        print(f"Chunked {provider.upper()} TTS audio saved to: {output_file} ({len(chunks)} chunks)")
+        return str(output_path)
+    finally:
+        # Cleanup temporary files
+        for temp_file in temp_files:
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
 
 def _generate_azure_tts(text, output_file, voice=None):
     """Generate audio using Azure OpenAI TTS."""
@@ -285,7 +395,7 @@ def _generate_local_tts(text, output_file, voice=None):
 
 def test_tts_providers():
     """Test all available TTS providers."""
-    test_text = "Hello, this is a test of text to speech functionality!"
+    test_text = "Hello, this is a test of text to speech functionality. "
     test_file = "test_output"
     
     providers = ["local", "azure", "gcp"]
@@ -333,7 +443,7 @@ if __name__ == "__main__":
     print("="*50)
     
     # Test the specified provider
-    test_text = "Hello, this is a test of text to speech functionality!"
+    test_text = "Hello, this is a test of text to speech functionality."
     test_file = f"test_output_{provider}.mp3"
     
     try:
